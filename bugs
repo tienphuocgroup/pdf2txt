@@ -1,0 +1,11 @@
+when extracting a large file, at seems the program does extration of images first. and encounter an error
+
+Error: code=4: pixmap must be grayscale or rgb to write as png
+
+And then stopped everything.
+
+Expected: When it can't extract an image, it should write the images as "ERROR" and move on to the next images and then extract the text. It needs to handle errors better so that it complete the task.
+
+
+
+2. We should add some intelligent features so that the text extraction would also not create gibberish, like dropping spaces, or adding random newline characters unncesessarily etc. Can this bedone purely programmatically or we must use some AI for this?
