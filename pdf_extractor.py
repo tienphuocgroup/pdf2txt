@@ -217,7 +217,7 @@ class PDFExtractor:
         else:
             output_dir = Path(output_dir)
         
-        output_dir.mkdir(exist_ok=True)
+        output_dir.mkdir(parents=True, exist_ok=True)
         
         print(f"Processing: {pdf_path}")
         print(f"Output directory: {output_dir}")
@@ -277,10 +277,8 @@ def main():
         for i, pdf_path in enumerate(pdf_files, 1):
             print(f"\n[{i}/{len(pdf_files)}] Processing: {pdf_path.name}")
             
-            # Determine output directory
-            if args.batch and args.output:
-                output_dir = Path(args.output)
-            elif args.output:
+            # Determine output directory (same logic as single file)
+            if args.output:
                 output_dir = Path(args.output) / f"{pdf_path.stem}_extracted"
             else:
                 output_dir = pdf_path.parent / f"{pdf_path.stem}_extracted"
