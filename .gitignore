@@ -4,7 +4,7 @@
 __pycache__/
 *.py[cod]
 *$py.class
-
+CLAUDE.md
 # C extensions
 *.so
 
@@ -131,6 +131,7 @@ ENV/
 env.bak/
 venv.bak/
 pdf_env/
+pdf_env_new/
 
 # Spyder project settings
 .spyderproject

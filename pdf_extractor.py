@@ -243,28 +243,70 @@ class PDFExtractor:
 
 def main():
     parser = argparse.ArgumentParser(description="Extract text and images from PDF with token splitting")
-    parser.add_argument("pdf_path", help="Path to the PDF file")
-    parser.add_argument("-o", "--output", help="Output directory (default: {pdf_name}_extracted)")
+    parser.add_argument("pdf_path", nargs='+', help="Path to PDF file(s) - supports multiple files and wildcards")
+    parser.add_argument("-o", "--output", help="Output directory (default: {pdf_name}_extracted for each file)")
     parser.add_argument("-t", "--max-tokens", type=int, default=45000, 
                        help="Maximum tokens per output file (default: 45000)")
+    parser.add_argument("-b", "--batch", action="store_true", 
+                       help="Batch mode: put all files in single output directory")
     
     args = parser.parse_args()
     
     try:
         extractor = PDFExtractor(max_tokens=args.max_tokens)
-        result = extractor.process_pdf(args.pdf_path, args.output)
+        
+        # Handle multiple PDF files
+        pdf_files = []
+        for path_pattern in args.pdf_path:
+            # Expand wildcards
+            expanded_paths = Path().glob(path_pattern) if '*' in path_pattern else [Path(path_pattern)]
+            for path in expanded_paths:
+                if path.is_file() and path.suffix.lower() == '.pdf':
+                    pdf_files.append(path)
+        
+        if not pdf_files:
+            print("No PDF files found!", file=sys.stderr)
+            sys.exit(1)
+        
+        print(f"Processing {len(pdf_files)} PDF file(s)...")
+        
+        total_files = 0
+        total_images = 0
+        total_tokens = 0
+        
+        for i, pdf_path in enumerate(pdf_files, 1):
+            print(f"\n[{i}/{len(pdf_files)}] Processing: {pdf_path.name}")
+            
+            # Determine output directory
+            if args.batch and args.output:
+                output_dir = Path(args.output)
+            elif args.output:
+                output_dir = Path(args.output) / f"{pdf_path.stem}_extracted"
+            else:
+                output_dir = pdf_path.parent / f"{pdf_path.stem}_extracted"
+            
+            try:
+                result = extractor.process_pdf(str(pdf_path), str(output_dir))
+                
+                total_files += len(result['text_files'])
+                total_images += result['image_count']
+                total_tokens += result['total_tokens']
+                
+                print(f"  ✓ Text files: {len(result['text_files'])}")
+                print(f"  ✓ Images: {result['image_count']}")
+                print(f"  ✓ Tokens: {result['total_tokens']:,}")
+                
+            except Exception as e:
+                print(f"  ✗ Error: {e}", file=sys.stderr)
+                continue
         
         print("\n" + "="*50)
-        print("EXTRACTION COMPLETE")
+        print("BATCH EXTRACTION COMPLETE")
         print("="*50)
-        print(f"PDF: {result['pdf_path']}")
-        print(f"Output directory: {result['output_dir']}")
-        print(f"Text files created: {len(result['text_files'])}")
-        print(f"Images extracted: {result['image_count']}")
-        print(f"Total tokens: {result['total_tokens']:,}")
-        print("\nText files:")
-        for file in result['text_files']:
-            print(f"  - {file}")
+        print(f"PDFs processed: {len(pdf_files)}")
+        print(f"Total text files: {total_files}")
+        print(f"Total images: {total_images}")
+        print(f"Total tokens: {total_tokens:,}")
         
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
