@@ -1,24 +1,35 @@
-# PDF to Text and Image Extractor
+# PDF to Text and Image Extractor with OCR Support
 
-A robust, cross-platform Python script that extracts text content and images from PDF files, with intelligent colorspace handling and token-based text splitting. Handles complex PDFs with CMYK, DeviceN, and other colorspaces that commonly cause extraction failures.
+A robust, cross-platform Python script that extracts text content and images from PDF files, with intelligent colorspace handling, OCR support for scanned documents, and token-based text splitting. Handles complex PDFs with CMYK, DeviceN, and other colorspaces that commonly cause extraction failures.
 
 ## Features
 
 - **Robust Text Extraction**: Extract all text content from PDF files with page markers
+- **🆕 OCR Support**: Extract text from scanned PDF documents using Tesseract OCR
+  - Automatic detection of scanned pages (image-based content)
+  - Support for multiple languages (English, Vietnamese, French, German, Spanish, etc.)
+  - Intelligent combination of PDF text and OCR text
+  - High-resolution rendering for better OCR accuracy
 - **Advanced Image Extraction**: Extract all images with intelligent colorspace handling
   - Supports CMYK, DeviceN, RGB, and grayscale colorspaces
   - Automatic conversion to PNG-compatible formats
   - Handles complex PDFs that cause other extractors to fail
+  - OCR text extraction from individual images
 - **Smart Integration**: Insert image filenames at the correct positions within the extracted text
 - **Token-based Splitting**: Split large documents into chunks of approximately 45,000 tokens each
 - **Cross-platform**: Works on both macOS and Windows
-- **Latest Libraries**: Uses PyMuPDF 1.26.3 and tiktoken 0.9.0 with official cross-platform support
+- **Dual Interface**: Command-line and GUI versions available
+- **Latest Libraries**: Uses PyMuPDF 1.26.3, tiktoken 0.9.0, and Tesseract OCR
 
 ## Requirements
 
 - Python 3.9 or higher
 - PyMuPDF 1.26.3+ (for PDF processing)
 - tiktoken 0.9.0+ (for token counting)
+- **For OCR features:**
+  - pytesseract 0.3.10+ (Python wrapper for Tesseract)
+  - Pillow 10.0.0+ (image processing)
+  - Tesseract OCR engine (see [TESSERACT_SETUP.md](TESSERACT_SETUP.md) for installation)
 
 ## Installation
 
@@ -133,9 +144,23 @@ python pdf_extractor.py my_document.pdf -o extracted_content -t 40000
 ### Command Line Options
 
 ```
-usage: pdf_extractor.py [-h] [-o OUTPUT] [-t MAX_TOKENS] pdf_path
+usage: pdf_extractor.py [-h] [-o OUTPUT] [-t MAX_TOKENS] [-b] [--ocr] [--ocr-lang OCR_LANG] pdf_path [pdf_path ...]
 
-Extract text and images from PDF with token splitting
+Extract text and images from PDF with token splitting and OCR support
+
+positional arguments:
+  pdf_path              Path to PDF file(s) - supports multiple files and wildcards
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -o OUTPUT, --output OUTPUT
+                        Output directory (default: {pdf_name}_extracted for each file)
+  -t MAX_TOKENS, --max-tokens MAX_TOKENS
+                        Maximum tokens per output file (default: 45000)
+  -b, --batch           Batch mode: put all files in single output directory
+  --ocr                 Enable OCR for scanned documents (requires Tesseract)
+  --ocr-lang OCR_LANG   OCR language code (default: eng). Examples: vie (Vietnamese), eng+vie (multiple)
+```
 
 positional arguments:
   pdf_path              Path to the PDF file
@@ -254,6 +279,60 @@ Text files:
   - large_document_extracted/large_document_part_2.txt
   - large_document_extracted/large_document_part_3.txt
 ```
+
+### OCR Support for Scanned Documents
+
+#### Setup OCR (One-time)
+See [TESSERACT_SETUP.md](TESSERACT_SETUP.md) for detailed Tesseract installation instructions.
+
+#### Basic OCR Usage
+
+```bash
+# macOS - Enable OCR for scanned documents
+python3 pdf_extractor.py document.pdf --ocr
+
+# Windows - Enable OCR for scanned documents  
+python pdf_extractor.py document.pdf --ocr
+```
+
+#### OCR with Different Languages
+
+```bash
+# Vietnamese documents
+python3 pdf_extractor.py document.pdf --ocr --ocr-lang vie
+
+# Multiple languages (English + Vietnamese)
+python3 pdf_extractor.py document.pdf --ocr --ocr-lang eng+vie
+
+# French documents
+python3 pdf_extractor.py document.pdf --ocr --ocr-lang fra
+```
+
+#### Complete OCR Example
+
+```bash
+# Process scanned Vietnamese document with custom settings
+python3 pdf_extractor.py scanned_document.pdf --ocr --ocr-lang eng+vie -o vietnamese_output -t 30000
+```
+
+### GUI Version
+
+For a user-friendly graphical interface:
+
+```bash
+# macOS
+python3 pdf_extractor_gui.py
+
+# Windows
+python pdf_extractor_gui.py
+```
+
+The GUI includes:
+- File selection with drag & drop
+- OCR language selection
+- Real-time progress tracking
+- Batch processing support
+- Integrated error logging
 
 ## Troubleshooting
 

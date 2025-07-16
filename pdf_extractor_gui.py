@@ -29,6 +29,8 @@ class PDFExtractorGUI:
         self.selected_files = []
         self.output_directory = tk.StringVar()
         self.max_tokens = tk.IntVar(value=45000)
+        self.use_ocr = tk.BooleanVar(value=False)
+        self.ocr_language = tk.StringVar(value="eng")
         self.processing = False
         
         self.create_widgets()
@@ -80,10 +82,29 @@ class PDFExtractorGUI:
         settings_frame = ttk.LabelFrame(main_frame, text="Settings", padding="10")
         settings_frame.grid(row=4, column=0, columnspan=3, sticky=(tk.W, tk.E, tk.N), pady=10)
         
+        # Max tokens setting
         ttk.Label(settings_frame, text="Max tokens per file:").grid(row=0, column=0, sticky=tk.W)
         token_spinbox = ttk.Spinbox(settings_frame, from_=10000, to=100000, increment=5000, 
                                    textvariable=self.max_tokens, width=10)
         token_spinbox.grid(row=0, column=1, sticky=tk.W, padx=(10, 0))
+        
+        # OCR settings
+        ocr_check = ttk.Checkbutton(settings_frame, text="Enable OCR for scanned documents", 
+                                   variable=self.use_ocr, command=self.toggle_ocr_settings)
+        ocr_check.grid(row=1, column=0, columnspan=2, sticky=tk.W, pady=(10, 5))
+        
+        # OCR Language setting
+        self.ocr_frame = ttk.Frame(settings_frame)
+        self.ocr_frame.grid(row=2, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=5)
+        
+        ttk.Label(self.ocr_frame, text="OCR Language:").grid(row=0, column=0, sticky=tk.W)
+        self.ocr_combo = ttk.Combobox(self.ocr_frame, textvariable=self.ocr_language, 
+                                     values=["eng", "vie", "fra", "deu", "spa", "eng+vie"], 
+                                     width=15, state="readonly")
+        self.ocr_combo.grid(row=0, column=1, sticky=tk.W, padx=(10, 0))
+        
+        # Initially disable OCR settings
+        self.toggle_ocr_settings()
         
         # Progress bar
         self.progress_var = tk.DoubleVar()
@@ -179,8 +200,15 @@ class PDFExtractorGUI:
     def extract_files(self):
         """Extract files (runs in background thread)"""
         try:
-            extractor = PDFExtractor(max_tokens=self.max_tokens.get())
+            extractor = PDFExtractor(
+                max_tokens=self.max_tokens.get(),
+                use_ocr=self.use_ocr.get(),
+                ocr_language=self.ocr_language.get()
+            )
             total_files = len(self.selected_files)
+            
+            if self.use_ocr.get():
+                self.log_message(f"OCR enabled (language: {self.ocr_language.get()})")
             
             self.log_message(f"Starting extraction of {total_files} file(s)...")
             
@@ -217,6 +245,18 @@ class PDFExtractorGUI:
         finally:
             self.processing = False
             self.extract_button.config(state='normal')
+    
+    def toggle_ocr_settings(self):
+        """Enable/disable OCR settings based on checkbox"""
+        if self.use_ocr.get():
+            # Enable OCR settings
+            for widget in self.ocr_frame.winfo_children():
+                widget.config(state='normal')
+        else:
+            # Disable OCR settings
+            for widget in self.ocr_frame.winfo_children():
+                if hasattr(widget, 'config'):
+                    widget.config(state='disabled')
 
 def main():
     root = tk.Tk()

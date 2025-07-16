@@ -213,3 +213,69 @@ document_extracted/
 ---
 
 *This tool is designed for defensive security and document processing use cases. It helps extract and analyze PDF content in a safe, controlled manner.*
+
+## OCR Support for Scanned Documents
+
+### 🆕 NEW FEATURE: OCR Integration
+
+The PDF Extractor now supports OCR (Optical Character Recognition) to extract text from scanned PDF documents that contain images instead of searchable text.
+
+### OCR Features
+
+- **Automatic Detection**: Automatically detects pages with little extractable text (likely scanned)
+- **Multi-language Support**: Supports 100+ languages including English, Vietnamese, French, German, Spanish
+- **Smart Processing**: Combines PDF text with OCR text for best results
+- **Image OCR**: Extracts text from individual images within PDFs
+- **High Accuracy**: Uses high-resolution rendering for better OCR accuracy
+
+### Setup OCR (One-time)
+
+1. **Install Tesseract OCR engine** (see [TESSERACT_SETUP.md](TESSERACT_SETUP.md))
+2. **Install Python packages** (already included in requirements.txt):
+   ```bash
+   pip install pytesseract Pillow
+   ```
+
+### Using OCR
+
+#### Command Line
+
+```bash
+# Basic OCR (English)
+./pdf-extractor-macos document.pdf --ocr
+
+# Vietnamese documents
+./pdf-extractor-macos document.pdf --ocr --ocr-lang vie
+
+# Multiple languages
+./pdf-extractor-macos document.pdf --ocr --ocr-lang eng+vie
+```
+
+#### GUI Version
+
+1. Launch the GUI: `python pdf_extractor_gui.py`
+2. Check "Enable OCR for scanned documents"
+3. Select your language from the dropdown
+4. Process your files normally
+
+### Supported Languages
+
+Common language codes:
+- `eng` - English (default)
+- `vie` - Vietnamese  
+- `fra` - French
+- `deu` - German
+- `spa` - Spanish
+- `chi_sim` - Chinese Simplified
+- `jpn` - Japanese
+- `kor` - Korean
+- `ara` - Arabic
+
+See full list: `tesseract --list-langs`
+
+### Performance Tips
+
+1. **Use specific languages**: Only specify languages you need
+2. **Good quality scans**: Higher resolution = better OCR results
+3. **Combine languages**: Use `eng+vie` for bilingual documents
+4. **Test first**: Run on a sample page to verify language detection
