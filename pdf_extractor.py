@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-PDF Text and Image Extractor with Token Splitting
-Extracts text content and images from PDF files, inserting image filenames 
-at correct positions in text, and splits output into ~45k token chunks.
+PDF Text and Image Extractor with Token Splitting and OCR Support
+Extracts text content and images from PDF files, with OCR support for scanned documents,
+inserting image filenames at correct positions in text, and splits output into ~45k token chunks.
 """
 
 import os
@@ -13,11 +13,26 @@ from pathlib import Path
 from typing import List, Tuple, Dict
 import re
 import tiktoken
+import pytesseract
+from PIL import Image
+import io
 
 class PDFExtractor:
-    def __init__(self, max_tokens: int = 45000):
+    def __init__(self, max_tokens: int = 45000, use_ocr: bool = False, ocr_language: str = 'eng'):
         self.max_tokens = max_tokens
+        self.use_ocr = use_ocr
+        self.ocr_language = ocr_language
         self.encoding = tiktoken.get_encoding("cl100k_base")  # GPT-4 encoding
+        
+        # Test tesseract availability if OCR is enabled
+        if self.use_ocr:
+            try:
+                pytesseract.get_tesseract_version()
+                print(f"✓ Tesseract OCR enabled (language: {ocr_language})")
+            except Exception as e:
+                print(f"⚠ Warning: Tesseract OCR not available: {e}")
+                print("  OCR features will be disabled. Install Tesseract to enable OCR.")
+                self.use_ocr = False
         
     def count_tokens(self, text: str) -> int:
         """Count tokens in text using tiktoken"""
@@ -53,9 +68,9 @@ class PDFExtractor:
         
         return text.strip()
     
-    def extract_images_from_page(self, page, page_num: int, output_dir: str) -> List[str]:
-        """Extract images from a PDF page and return list of filenames"""
-        image_filenames = []
+    def extract_images_from_page(self, page, page_num: int, output_dir: str) -> List[Tuple[str, str]]:
+        """Extract images from a PDF page and return list of (filename, ocr_text) tuples"""
+        image_results = []
         image_list = page.get_images(full=True)
         
         for img_index, img in enumerate(image_list):
@@ -98,21 +113,32 @@ class PDFExtractor:
                         error_filepath = os.path.join(output_dir, error_filename)
                         with open(error_filepath, 'w') as f:
                             f.write(f"ERROR: Failed to convert image with colorspace {colorspace_str} - {conv_error}")
-                        image_filenames.append(error_filename)
+                        image_results.append((error_filename, ""))
                         continue
+                
+                # Extract OCR text from image if enabled
+                ocr_text = ""
+                if self.use_ocr and final_pix:
+                    try:
+                        img_data = final_pix.tobytes("png")
+                        ocr_text = self.extract_text_from_image_ocr(img_data)
+                        if ocr_text.strip():
+                            print(f"✓ OCR extracted {len(ocr_text)} characters from {filename}")
+                    except Exception as ocr_error:
+                        print(f"Warning: OCR failed for {filename}: {ocr_error}")
                 
                 # Only save if we have a valid pixmap
                 if final_pix:
                     try:
                         final_pix.save(filepath)
-                        image_filenames.append(filename)
+                        image_results.append((filename, ocr_text))
                     except Exception as save_error:
                         print(f"Warning: Could not save image {filename}: {save_error}")
                         error_filename = f"page_{page_num}_image_{img_index + 1}_ERROR.txt"
                         error_filepath = os.path.join(output_dir, error_filename)
                         with open(error_filepath, 'w') as f:
                             f.write(f"ERROR: Failed to save image - {save_error}")
-                        image_filenames.append(error_filename)
+                        image_results.append((error_filename, ""))
                     finally:
                         # Clean up converted pixmap if it was created
                         if conversion_needed and final_pix != pix:
@@ -124,15 +150,15 @@ class PDFExtractor:
                 error_filepath = os.path.join(output_dir, error_filename)
                 with open(error_filepath, 'w') as f:
                     f.write(f"ERROR: Failed to process image - {pix_error}")
-                image_filenames.append(error_filename)
+                image_results.append((error_filename, ""))
             finally:
                 if pix:
                     pix = None
         
-        return image_filenames
+        return image_results
     
     def extract_text_with_image_positions(self, pdf_path: str, output_dir: str) -> str:
-        """Extract text from PDF and insert image filenames at appropriate positions"""
+        """Extract text from PDF and insert image filenames at appropriate positions, with OCR support"""
         doc = fitz.open(pdf_path)
         full_text = ""
         
@@ -146,19 +172,37 @@ class PDFExtractor:
             # Add page separator
             full_text += f"--- Page {page_num + 1} ---\n"
             
-            # Extract images first
-            image_filenames = self.extract_images_from_page(page, page_num + 1, images_dir)
+            # Extract images first (now returns tuples with OCR text)
+            image_results = self.extract_images_from_page(page, page_num + 1, images_dir)
             
-            # Extract text
+            # Extract text using normal PDF extraction
             page_text = page.get_text()
-            
-            # Clean the extracted text
             page_text = self.clean_extracted_text(page_text)
             
-            # Insert image references at beginning of page if images exist
-            if image_filenames:
-                image_refs = "\n".join([f"[IMAGE: {img}]" for img in image_filenames])
-                full_text += f"{image_refs}\n\n"
+            # Check if this is a scanned page (little extractable text)
+            is_scanned = self.is_page_mostly_images(page)
+            
+            # If it's a scanned page or we have very little text, try OCR on the entire page
+            ocr_page_text = ""
+            if self.use_ocr and (is_scanned or len(page_text.strip()) < 100):
+                print(f"Page {page_num + 1} appears to be scanned, applying OCR...")
+                ocr_page_text = self.extract_text_from_page_ocr(page)
+                if len(ocr_page_text.strip()) > len(page_text.strip()):
+                    print(f"✓ OCR produced better results for page {page_num + 1}")
+                    page_text = ocr_page_text
+                elif ocr_page_text.strip():
+                    print(f"✓ Combined PDF text with OCR text for page {page_num + 1}")
+                    page_text = f"{page_text}\n\n[OCR Text]:\n{ocr_page_text}"
+            
+            # Insert image references and OCR text
+            if image_results:
+                image_section = ""
+                for filename, ocr_text in image_results:
+                    image_section += f"[IMAGE: {filename}]"
+                    if ocr_text.strip():
+                        image_section += f"\n[OCR from {filename}]:\n{ocr_text}\n"
+                    image_section += "\n"
+                full_text += f"{image_section}\n"
             
             full_text += page_text + "\n\n"
         
@@ -240,20 +284,94 @@ class PDFExtractor:
             "image_count": image_count,
             "total_tokens": self.count_tokens(full_text)
         }
+    
+    def extract_text_from_image_ocr(self, image_data: bytes) -> str:
+        """Extract text from image data using OCR"""
+        if not self.use_ocr:
+            return ""
+        
+        try:
+            # Convert image data to PIL Image
+            image = Image.open(io.BytesIO(image_data))
+            
+            # Convert to RGB if necessary
+            if image.mode != 'RGB':
+                image = image.convert('RGB')
+            
+            # Perform OCR
+            extracted_text = pytesseract.image_to_string(
+                image, 
+                lang=self.ocr_language,
+                config='--psm 1'  # Automatic page segmentation with OSD
+            )
+            
+            # Clean extracted text
+            return self.clean_extracted_text(extracted_text)
+            
+        except Exception as e:
+            print(f"Warning: OCR failed on image: {e}")
+            return ""
+    
+    def extract_text_from_page_ocr(self, page) -> str:
+        """Extract text from entire page using OCR (for scanned documents)"""
+        if not self.use_ocr:
+            return ""
+        
+        try:
+            # Render page as image with high DPI for better OCR
+            mat = fitz.Matrix(2.0, 2.0)  # 2x zoom for better OCR accuracy
+            pix = page.get_pixmap(matrix=mat)
+            
+            # Convert to PIL Image
+            img_data = pix.tobytes("png")
+            image = Image.open(io.BytesIO(img_data))
+            
+            # Perform OCR
+            extracted_text = pytesseract.image_to_string(
+                image, 
+                lang=self.ocr_language,
+                config='--psm 1'  # Automatic page segmentation with OSD
+            )
+            
+            pix = None  # Clean up
+            
+            # Clean and return extracted text
+            return self.clean_extracted_text(extracted_text)
+            
+        except Exception as e:
+            print(f"Warning: Page OCR failed: {e}")
+            return ""
+    
+    def is_page_mostly_images(self, page, text_threshold: int = 50) -> bool:
+        """Determine if a page is mostly images (likely scanned) based on text content"""
+        try:
+            page_text = page.get_text().strip()
+            # If very little extractable text, likely a scanned page
+            return len(page_text) < text_threshold
+        except:
+            return True  # If we can't extract text, assume it's image-based
 
 def main():
-    parser = argparse.ArgumentParser(description="Extract text and images from PDF with token splitting")
+    parser = argparse.ArgumentParser(description="Extract text and images from PDF with token splitting and OCR support")
     parser.add_argument("pdf_path", nargs='+', help="Path to PDF file(s) - supports multiple files and wildcards")
     parser.add_argument("-o", "--output", help="Output directory (default: {pdf_name}_extracted for each file)")
     parser.add_argument("-t", "--max-tokens", type=int, default=45000, 
                        help="Maximum tokens per output file (default: 45000)")
     parser.add_argument("-b", "--batch", action="store_true", 
                        help="Batch mode: put all files in single output directory")
+    parser.add_argument("--ocr", action="store_true", 
+                       help="Enable OCR for scanned documents (requires Tesseract)")
+    parser.add_argument("--ocr-lang", default="eng", 
+                       help="OCR language code (default: eng). Examples: vie (Vietnamese), eng+vie (multiple)")
     
     args = parser.parse_args()
     
     try:
-        extractor = PDFExtractor(max_tokens=args.max_tokens)
+        extractor = PDFExtractor(
+            max_tokens=args.max_tokens, 
+            use_ocr=args.ocr,
+            ocr_language=args.ocr_lang
+        )
         
         # Handle multiple PDF files
         pdf_files = []
